@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "kosuke-starter",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  // Better Auth uses AsyncLocalStorage, which workerd provides under nodejs_compat.
+  // This is a runtime flag, not permission to use Node or Bun APIs in server code.
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/health"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "kosuke-starter",
+      // Set by Kosuke when it creates the project's production database.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ]
+}
