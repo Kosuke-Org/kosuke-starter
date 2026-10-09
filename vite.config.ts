@@ -15,4 +15,7 @@ export default defineConfig({
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
+  // The dev server is reached through a preview host it cannot know in advance, such as a
+  // sandbox's own subdomain. Without this Vite answers every request "Blocked request".
+  server: { allowedHosts: true },
 });
