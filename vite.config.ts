@@ -18,4 +18,8 @@ export default defineConfig({
   // The dev server is reached through a preview host it cannot know in advance, such as a
   // sandbox's own subdomain. Without this Vite answers every request "Blocked request".
   server: { allowedHosts: true },
+  // Scan every source file at startup, so a dependency the app already imports anywhere is
+  // pre-bundled before the first page load rather than re-optimized mid-session, which can
+  // leave a long-running dev server holding module requests it never answers.
+  optimizeDeps: { entries: ["src/**/*.{ts,tsx}"] },
 });
