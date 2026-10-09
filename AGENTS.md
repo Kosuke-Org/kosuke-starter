@@ -13,6 +13,8 @@ One Cloudflare Worker serves the API and the React app on one port.
 
 `bun run dev` starts Vite with `@cloudflare/vite-plugin`, so the Worker runs in `workerd`, the same runtime as production. What works in dev works when published.
 
+**Dev memory budget: about 900 MB** for the whole dev process tree (Vite plus `workerd`). Measured at 774 to 871 MB in a 2 vCPU / 4 GB sandbox. Most of it is `@cloudflare/vite-plugin` running the Worker in `workerd` inside Vite, which is kept on purpose so dev and production share one runtime. A change that pushes the idle tree past 900 MB needs a reason.
+
 ## Commands
 
 | Command | What it does |
@@ -70,7 +72,17 @@ On the client, read `useSession()` and redirect to `/sign-in` when there is no s
 
 **A secret.** Add it to `worker/env.ts` and `.dev.vars.example`, put the real value in `.dev.vars` locally. In production it is a Worker secret, set by Kosuke.
 
-**UI.** Compose from `src/components/ui/`. Every shadcn component is already there; do not install another UI library. Colours come from the theme tokens in `src/index.css`, so both dark and light work.
+**UI.** Compose from `src/components/ui/`, and do not install another UI library. Colours come from the theme tokens in `src/index.css`, so both dark and light work.
+
+The starter vendors the shadcn components most apps use: accordion, alert, alert-dialog, avatar, badge, breadcrumb, button, card, checkbox, collapsible, dialog, dropdown-menu, empty, field, input, input-group, kbd, label, pagination, popover, progress, radio-group, scroll-area, select, separator, sheet, sidebar, skeleton, slider, sonner, spinner, switch, table, tabs, textarea, toggle, toggle-group, tooltip.
+
+Any other shadcn component is one command away. The pinned `shadcn` dev dependency writes it into `src/components/ui/` and installs its package:
+
+```sh
+bunx shadcn add <component>
+```
+
+For example `calendar`, `command`, `carousel`, `drawer`, `input-otp`, `resizable` or `combobox`. They were left out because each brings its own package (react-day-picker, cmdk, embla-carousel-react, vaul, input-otp, react-resizable-panels, @base-ui/react). Add one only when the app needs it.
 
 ## Rules
 
