@@ -27,8 +27,8 @@ beforeAll(async () => {
 
 afterAll(() => proxy?.dispose());
 
-const call = (path: string, init?: RequestInit) =>
-  app.request(`http://localhost${path}`, init, env);
+const call = (path: string, init?: RequestInit, base = "http://localhost") =>
+  app.request(`${base}${path}`, init, env);
 
 describe("smoke", () => {
   it("answers /health", async () => {
@@ -72,5 +72,37 @@ describe("smoke", () => {
     expect(signOut.status).toBe(200);
     const after = await call("/api/auth/get-session", { headers: { cookie } });
     expect(await after.json()).toBeNull();
+  });
+
+  it("uses __Host- session cookies over https", async () => {
+    const base = "https://notes.kosuke.app";
+    const json = { "content-type": "application/json", origin: base };
+    const signUp = await call(
+      "/api/auth/sign-up/email",
+      {
+        method: "POST",
+        headers: json,
+        body: JSON.stringify({ email: "b@example.com", password: "password123", name: "B" }),
+      },
+      base,
+    );
+    expect(signUp.status).toBe(200);
+    const setCookie = signUp.headers.get("set-cookie") ?? "";
+    expect(setCookie).toMatch(/^__Host-better-auth\.session_token=/);
+    expect(setCookie).toMatch(/; Secure/i);
+    expect(setCookie).toMatch(/; Path=\//i);
+    expect(setCookie).not.toMatch(/; Domain=/i);
+
+    const cookie = setCookie.split(";")[0];
+    const session = await call("/api/auth/get-session", { headers: { cookie } }, base);
+    expect(((await session.json()) as { user: { email: string } }).user.email).toBe("b@example.com");
+
+    // The browser drops an expiry for a __Host- cookie that lacks Secure.
+    const signOut = await call("/api/auth/sign-out", { method: "POST", headers: { ...json, cookie } }, base);
+    expect(signOut.status).toBe(200);
+    const cleared = signOut.headers.get("set-cookie") ?? "";
+    expect(cleared).toMatch(/^__Host-better-auth\.session_token=;/);
+    expect(cleared).toMatch(/; Secure/i);
+    expect(cleared).not.toMatch(/; Domain=/i);
   });
 });

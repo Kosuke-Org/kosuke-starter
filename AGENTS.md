@@ -70,6 +70,8 @@ if (!session) return c.json({ error: "Sign in first" }, 401);
 
 On the client, read `useSession()` and redirect to `/sign-in` when there is no session.
 
+**A cookie.** A published app shares its parent domain with other people's apps, so any of them can set a cookie that this app receives. Name every cookie the app sets with the `__Host-` prefix and set it with `Secure`, `Path=/` and no `Domain`: the browser then refuses to let another subdomain set or overwrite it. Better Auth already does this over https (`worker/auth.ts`). Never set `Domain` on a cookie, and never turn on Better Auth's `crossSubDomainCookies`.
+
 **A secret.** Add it to `worker/env.ts` and `.dev.vars.example`, put the real value in `.dev.vars` locally. In production it is a Worker secret, set by Kosuke.
 
 **UI.** Compose from `src/components/ui/`, and do not install another UI library. Colours come from the theme tokens in `src/index.css`, so both dark and light work.
