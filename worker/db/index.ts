@@ -11,7 +11,16 @@ export function getDb(env: Pick<Env, "TURSO_DATABASE_URL" | "TURSO_AUTH_TOKEN">)
       "TURSO_DATABASE_URL is not set. In production Kosuke sets it as a Worker secret; for `vite preview`, put it in .dev.vars.",
     );
   }
-  const client = createClient({ url: env.TURSO_DATABASE_URL, authToken: env.TURSO_AUTH_TOKEN || undefined });
+  const client = createClient({
+    url: env.TURSO_DATABASE_URL,
+    authToken: env.TURSO_AUTH_TOKEN || undefined,
+    fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+      const signals = [AbortSignal.timeout(10_000)];
+      if (input instanceof Request) signals.push(input.signal);
+      if (init?.signal) signals.push(init.signal);
+      return fetch(input, { ...init, signal: AbortSignal.any(signals) });
+    },
+  });
   return drizzle(client, { schema });
 }
 

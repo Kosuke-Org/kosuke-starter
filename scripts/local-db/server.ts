@@ -77,6 +77,7 @@ export async function startLocalDb(file: string, port = 0): Promise<LocalDb> {
   };
   const acquire = async (stream: Stream) => {
     while (owner && owner !== stream) await new Promise<void>((wake) => waiters.push(wake));
+    owner = stream;
   };
   const closeStream = (stream: Stream) => {
     clearTimeout(stream.timer);
@@ -116,8 +117,7 @@ export async function startLocalDb(file: string, port = 0): Promise<LocalDb> {
       closeStream(stream);
       return { baton: null, base_url: null, results };
     }
-    if (db.inTransaction) owner = stream;
-    else {
+    if (!db.inTransaction) {
       db.exec("PRAGMA foreign_keys = ON");
       if (owner === stream) release();
     }

@@ -1,10 +1,12 @@
 // The local libSQL server that stands in for Turso in dev and tests.
 import { createClient } from "@libsql/client/web";
+import { sql } from "drizzle-orm";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { startLocalDb, type LocalDb } from "../scripts/local-db/server";
+import { getDb } from "../worker/db";
 
 let dir: string;
 let server: LocalDb;
@@ -24,6 +26,26 @@ afterAll(async () => {
 const count = async () => Number((await client().execute("SELECT count(*) AS n FROM t")).rows[0].n);
 
 describe("local libSQL server", () => {
+  it("aborts a stalled Worker database fetch at the request deadline", async () => {
+    const timeout = AbortSignal.timeout.bind(AbortSignal);
+    const deadline = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => timeout(20));
+    const stalledFetch = vi.spyOn(globalThis, "fetch").mockImplementation((_input, init) => new Promise((_resolve, reject) => {
+      const signal = init!.signal!;
+      if (signal.aborted) reject(signal.reason);
+      else signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    }));
+    try {
+      await expect(getDb({ TURSO_DATABASE_URL: server.url }).run(sql`SELECT 1`)).rejects.toThrow();
+      expect(deadline).toHaveBeenCalledWith(10_000);
+      expect(stalledFetch).toHaveBeenCalled();
+      expect(stalledFetch.mock.calls[0][1]?.signal?.aborted).toBe(true);
+      expect(stalledFetch.mock.calls[0][1]?.signal?.reason.name).toBe("TimeoutError");
+    } finally {
+      stalledFetch.mockRestore();
+      deadline.mockRestore();
+    }
+  });
+
   it("returns typed values, affected rows and the last rowid", async () => {
     const res = await client().execute({ sql: "INSERT INTO t (v) VALUES (?) RETURNING id, v, 1.5 AS f, x'0102' AS b", args: ["a"] });
     expect(res.rowsAffected).toBe(1);
@@ -58,6 +80,24 @@ describe("local libSQL server", () => {
     await tx.execute("INSERT INTO t (v) VALUES ('lost')");
     tx.close();
     expect(await count()).toBe(0);
+  });
+
+  it("keeps two waiting streams separate when one starts another transaction", async () => {
+    const first = await client().transaction("write");
+    await first.execute("INSERT INTO t (v) VALUES ('first transaction')");
+    const second = await client().transaction("write");
+    const transactionalInsert = second.execute("INSERT INTO t (v) VALUES ('second transaction')");
+    let inserted = false;
+    const plainInsert = client().execute("INSERT INTO t (v) VALUES ('plain insert')").then(() => { inserted = true; });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(inserted).toBe(false);
+    await first.rollback();
+    await transactionalInsert;
+    await second.rollback();
+    await plainInsert;
+    const rows = (await client().execute("SELECT v FROM t")).rows;
+    expect(rows.map((row) => row.v)).toEqual(["plain insert"]);
+    await client().execute("DELETE FROM t");
   });
 
   it("turns foreign keys back on after a stream turns them off", async () => {
