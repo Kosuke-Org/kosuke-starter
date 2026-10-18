@@ -7,17 +7,10 @@
   // This is a runtime flag, not permission to use Node or Bun APIs in server code.
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  // The database is Turso: TURSO_DATABASE_URL and TURSO_AUTH_TOKEN are Worker
+  // secrets set by Kosuke, not bindings. See README.md.
   "assets": {
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*", "/health"]
-  },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "kosuke-starter",
-      // Set by Kosuke when it creates the project's production database.
-      "database_id": "00000000-0000-0000-0000-000000000000",
-      "migrations_dir": "migrations"
-    }
-  ]
+  }
 }

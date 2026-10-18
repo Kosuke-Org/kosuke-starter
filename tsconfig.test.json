@@ -3,7 +3,7 @@
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo",
     "lib": ["ES2023"],
-    "types": ["vite/client", "@cloudflare/workers-types"]
+    "types": ["vite/client", "@cloudflare/workers-types", "node"]
   },
-  "include": ["test", "worker"]
+  "include": ["test", "worker", "scripts/local-db"]
 }

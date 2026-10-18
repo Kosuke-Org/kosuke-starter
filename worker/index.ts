@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { createAuth } from "./auth";
 import type { AppEnv } from "./env";
-import { notes } from "./routes/notes";
+import { records } from "./routes/records";
 
 // One chain, so the client's typed `hc` sees every route. Add a route by
 // writing worker/routes/<name>.ts and mounting it here with .route().
@@ -10,7 +10,7 @@ const app = new Hono<AppEnv>()
   .on(["GET", "POST"], "/api/auth/*", (c) =>
     createAuth(c.env, new URL(c.req.url).origin).handler(c.req.raw),
   )
-  .route("/api/notes", notes);
+  .route("/api/records", records);
 
 export type AppType = typeof app;
 export default app;
