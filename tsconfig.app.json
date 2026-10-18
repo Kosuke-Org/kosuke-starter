@@ -5,7 +5,7 @@
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     // The Workers types are here because src/lib/api.ts imports the Worker's
-    // route types for the typed client, and those name D1Database and Fetcher.
+    // route types for the typed client, and those name Fetcher.
     "types": ["vite/client", "@cloudflare/workers-types"],
     "paths": { "@/*": ["./src/*"] }
   },

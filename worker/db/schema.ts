@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { check, index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 const id = () => text("id").primaryKey();
 const createdAt = () =>
@@ -66,11 +66,42 @@ export const verification = sqliteTable("verification", {
 
 /* ---------- App tables ---------- */
 
-// The example table. Replace it with the app's own.
-export const notes = sqliteTable("notes", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  text: text("text").notNull(),
-  createdAt: createdAt(),
-});
+// The app's data: one row per record, its fields in `data`, a JSON object the
+// app shapes as it likes. People edit records through /api/records; Crons
+// write the same rows straight through SQL, so every default lives in SQL too:
+//   INSERT INTO records (data) VALUES (json_object('text', 'Hello'));
+//   UPDATE records SET data = json_set(data, '$.done', json('true')) WHERE id = ?;
+// A trigger (migrations/0002_records_updated_at.sql) moves updated_at forward
+// on every update, including those that do not set it.
+export const records = sqliteTable(
+  "records",
+  {
+    id: text("id")
+      .primaryKey()
+      .default(sql`(lower(hex(randomblob(16))))`),
+    data: text("data", { mode: "json" })
+      .$type<RecordData>()
+      .notNull()
+      .default(sql`'{}'`),
+    sortOrder: real("sort_order").notNull().default(0),
+    createdAt: createdAt(),
+    // Stamped in SQL, by nextUpdatedAt below or by the trigger above.
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [
+    index("records_sort_order_idx").on(t.sortOrder, t.createdAt),
+    check("records_data_is_object", sql`json_valid(data) AND json_type(data) = 'object'`),
+  ],
+);
 
-export type Note = typeof notes.$inferSelect;
+/**
+ * The time an update stamps on updated_at: now in ms, and always later than
+ * before. The trigger uses the same expression for updates that do not set it.
+ */
+export const nextUpdatedAt = sql`max(CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER), ${sql.identifier("updated_at")} + 1)`;
+
+/** A record's fields. Numbers are IEEE doubles, as JSON.parse reads them. */
+export type RecordData = Record<string, unknown>;
+export type AppRecord = typeof records.$inferSelect;

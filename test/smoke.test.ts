@@ -1,31 +1,19 @@
-// One smoke test over the real Worker app with a real local D1 (through
-// Wrangler's platform proxy), migrations applied from migrations/.
+// One smoke test over the real Worker app with a real database: the local
+// libSQL server, migrations applied from migrations/ (see setup-db.ts).
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { getPlatformProxy, type PlatformProxy } from "wrangler";
 import app from "../worker";
 import type { Env } from "../worker/env";
+import { setupDb } from "./setup-db";
 
-let proxy: PlatformProxy<Env>;
+let db: Awaited<ReturnType<typeof setupDb>>;
 let env: Env;
 
 beforeAll(async () => {
-  proxy = await getPlatformProxy<Env>({ persist: false });
-  env = { ...proxy.env, BETTER_AUTH_SECRET: "test-secret-at-least-32-characters-long" };
-  const migrations = import.meta.glob<string>("../migrations/*.sql", {
-    query: "?raw",
-    import: "default",
-    eager: true,
-  });
-  for (const file of Object.keys(migrations).sort()) {
-    const statements = migrations[file]
-      .split("--> statement-breakpoint")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    await env.DB.batch(statements.map((s) => env.DB.prepare(s)));
-  }
+  db = await setupDb();
+  env = db.env;
 });
 
-afterAll(() => proxy?.dispose());
+afterAll(() => db?.close());
 
 const call = (path: string, init?: RequestInit, base = "http://localhost") =>
   app.request(`${base}${path}`, init, env);
@@ -35,23 +23,6 @@ describe("smoke", () => {
     const res = await call("/health");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
-  });
-
-  it("writes and reads the example table", async () => {
-    const post = await call("/api/notes", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: "hello" }),
-    });
-    expect(post.status).toBe(201);
-    const list = (await (await call("/api/notes")).json()) as { text: string }[];
-    expect(list.map((n) => n.text)).toContain("hello");
-    const bad = await call("/api/notes", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: " " }),
-    });
-    expect(bad.status).toBe(400);
   });
 
   it("signs up, reads the session and signs out", async () => {
