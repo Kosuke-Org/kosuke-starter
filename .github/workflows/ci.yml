@@ -11,9 +11,11 @@ concurrency:
 
 jobs:
   check:
-    # Kosuke's self-hosted runners only. Never ubuntu-latest: One Shot
-    # repositories use no GitHub-hosted minutes.
-    runs-on: [self-hosted, kosuke]
+    # Kosuke's app runners in every private repository made from this one:
+    # One Shot repositories use no GitHub-hosted minutes. GitHub's runners only
+    # in a public repository (this template), where they cost nothing and a
+    # self-hosted runner would run any fork's pull request.
+    runs-on: ${{ github.event.repository.private && 'kosuke-apps-2' || 'ubuntu-latest' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
