@@ -66,3 +66,17 @@ describe("setup-dev-vars", () => {
     expect(readVars()).toBe("ENDPOINT=https://example.test/change-me/help\n");
   });
 });
+
+describe("setup-dev-vars with dotenv syntax", () => {
+  it("counts export, quoted and multi-line assignments in .dev.vars as set", () => {
+    const existing = 'export API_KEY=custom\nCERT="line one\nFAKE=inside\nline two"\n';
+    writeFileSync(join(root, ".dev.vars"), existing);
+    writeFileSync(join(root, ".dev.vars.example"), "API_KEY=change-me\nCERT=change-me\nFAKE=change-me\n");
+
+    runSetup();
+
+    const vars = readVars();
+    expect(vars.startsWith(existing)).toBe(true);
+    expect(vars.slice(existing.length)).toMatch(/^FAKE=[0-9a-f]{64}\n$/);
+  });
+});

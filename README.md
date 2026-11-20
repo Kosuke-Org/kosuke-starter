@@ -391,6 +391,7 @@ The example is a `notes` table. Rename it to what the app stores.
 7. **The header.** `src/components/user-menu.tsx`, placed beside `<ThemeToggle />` in `src/routes/__root.tsx` (wrap both in `<div className="flex items-center gap-2">`):
 
    ```tsx
+   import { useQueryClient } from "@tanstack/react-query";
    import { Link, useRouter } from "@tanstack/react-router";
    import { Button } from "@/components/ui/button";
    import { signOut, useSession } from "@/lib/auth-client";
@@ -398,12 +399,18 @@ The example is a `notes` table. Rename it to what the app stores.
    export function UserMenu() {
      const { data, isPending } = useSession();
      const router = useRouter();
+     const queryClient = useQueryClient();
      if (isPending) return null;
      if (!data) {
        return (
-         <Button variant="ghost" size="sm" asChild>
-           <Link to="/sign-in">Sign in</Link>
-         </Button>
+         <div className="flex items-center gap-2">
+           <Button variant="ghost" size="sm" asChild>
+             <Link to="/sign-in">Sign in</Link>
+           </Button>
+           <Button size="sm" asChild>
+             <Link to="/sign-up">Sign up</Link>
+           </Button>
+         </div>
        );
      }
      return (
@@ -412,6 +419,8 @@ The example is a `notes` table. Rename it to what the app stores.
          size="sm"
          onClick={async () => {
            await signOut();
+           // Drop the signed-out person's cached data, so the next one never sees it.
+           queryClient.clear();
            await router.navigate({ to: "/" });
          }}
        >
@@ -421,21 +430,35 @@ The example is a `notes` table. Rename it to what the app stores.
    }
    ```
 
-8. **Signed-in-only endpoints.** Put this first on a route's chain; every handler after it then needs a session:
+   When sign-up is closed (step 10), drop the Sign up link.
+
+8. **Signed-in-only endpoints.** First, refuse cross-site form posts to the API. Apps on sibling subdomains of the same parent domain count as the same site, so the browser sends them this app's session cookie. At the top of the chain in `worker/index.ts`, with `import { csrf } from "hono/csrf";`:
+
+   ```ts
+   const app = new Hono<AppEnv>()
+     .use("/api/*", csrf())
+     .get("/health", (c) => c.json({ ok: true }))
+     // … the auth handler and the routes
+   ```
+
+   Then put this first on a route's chain; every handler after it needs a session. `disableRefresh` leaves renewing the session cookie to `/api/auth/*`, which can send it back:
 
    ```ts
    .use(async (c, next) => {
-     const session = await createAuth(c.env, new URL(c.req.url).origin).api.getSession({ headers: c.req.raw.headers });
+     const session = await createAuth(c.env, new URL(c.req.url).origin).api.getSession({
+       headers: c.req.raw.headers,
+       query: { disableRefresh: true },
+     });
      if (!session) return c.json({ error: "Sign in first" }, 401);
      await next();
    })
    ```
 
-   For data each person owns, add a `userId` column that references `user.id`, read the session in the handler the same way, and filter every query by `session.user.id`.
+   For data each person owns, add a `userId` column that references `user.id`, read the session in the handler the same way, and filter every query by `session.user.id`. On the client, put the person's id in the query key (`["notes", session.user.id]`), so one person's cached data never shows to the next.
 
 9. **Signed-in-only pages.** In the page, read `useSession()`; while `isPending` show a `Skeleton`, and with no session return `<Navigate to="/sign-in" replace />`.
 
-10. **Who can sign up.** Sign-up is open: anyone with the address can make an account. To close it, set `emailAndPassword: { enabled: true, disableSignUp: true }` and drop the sign-up page, or check the email in a `databaseHooks.user.create.before` hook. For password reset email, see `.kosuke/recipes/email.md`.
+10. **Who can sign up.** Sign-up is open: anyone with the address can make an account, and nothing checks that they own the email they type. So an email address alone proves nothing: never grant access because of a domain or an allowlist unless emails are verified. To close sign-up, set `emailAndPassword: { enabled: true, disableSignUp: true }`, drop the sign-up page and its link, and create accounts on the server with the admin plugin's `auth.api.createUser` (the plugin adds columns to `user`, so run `bun run db:generate` and `bun run db:migrate` after adding it). To admit only certain addresses, first require verified email (`emailAndPassword.requireEmailVerification: true` with `emailVerification.sendVerificationEmail`, which needs `.kosuke/recipes/email.md`), then check the address in a `databaseHooks.user.create.before` hook. Password reset email also uses that recipe.
 
 11. **The tests.** In `test/setup-db.ts`, give the test Worker a secret: `const env = { TURSO_DATABASE_URL: server.url, BETTER_AUTH_SECRET: "test-secret-at-least-32-characters-long" } as Env;`. In `test/smoke.test.ts`, delete the cases that expect no sign-in routes (`/api/auth/...` answering 404): they describe the starter without sign-in. Then add a test: sign up through `app.request("https://app.example/api/auth/sign-up/email", …)` with an `origin` header of the same address, and check the `set-cookie` header starts with `__Host-better-auth.session_token=` and has `Secure`, `Path=/` and no `Domain`.
 
