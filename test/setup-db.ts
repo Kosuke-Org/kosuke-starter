@@ -15,10 +15,7 @@ export async function setupDb() {
   const server = await startLocalDb(join(dir, "test.db"));
   const client = createClient({ url: server.url });
   await migrate(drizzle(client), { migrationsFolder: "migrations" });
-  const env = {
-    TURSO_DATABASE_URL: server.url,
-    BETTER_AUTH_SECRET: "test-secret-at-least-32-characters-long",
-  } as Env;
+  const env = { TURSO_DATABASE_URL: server.url } as Env;
   return {
     env,
     /** Raw SQL, the way a Cron writes. */

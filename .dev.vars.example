@@ -1,6 +1,6 @@
-# Local secrets for `bun run dev`. `bun install` copies this to .dev.vars
-# with a random BETTER_AUTH_SECRET when .dev.vars does not exist.
-BETTER_AUTH_SECRET=change-me
+# Local secrets for `bun run dev`. `bun install` creates .dev.vars from this
+# file and adds any variable set here that .dev.vars lacks. Each change-me
+# value becomes a random one.
 
 # The app's Turso database. Leave both unset to use the local file
 # .data/local.db instead. They can also come from the environment.
