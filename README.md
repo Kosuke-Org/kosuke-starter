@@ -52,6 +52,8 @@ The dev server regenerates `src/routeTree.gen.ts` (`bun run build` does too); co
 2. Mount it in `worker/index.ts`, on the same chain, so the client's types see it:
 
    ```ts
+   import { hello } from "./routes/hello";
+
    const app = new Hono<AppEnv>()
      .get("/health", (c) => c.json({ ok: true }))
      .route("/api/hello", hello);
@@ -59,7 +61,7 @@ The dev server regenerates `src/routeTree.gen.ts` (`bun run build` does too); co
 
 3. Call it from the client: `const res = await api.api.hello.$get(); const { message } = await res.json();`
 
-Every path under `/api/` reaches the Worker (`run_worker_first` in `wrangler.jsonc`); anything else is the React app.
+Paths under `/api/`, and `/health`, reach the Worker (`run_worker_first` in `wrangler.jsonc`); anything else is the React app. A new path outside `/api/` needs adding there.
 
 ### Add a table and CRUD endpoints
 
@@ -126,7 +128,7 @@ The example is a `notes` table. Rename it to what the app stores.
      });
    ```
 
-   Mount it in `worker/index.ts` with `.route("/api/notes", notes)`. Writes that must succeed or fail together go in one `getDb(c.env).batch([...])`.
+   Mount it in `worker/index.ts`: `import { notes } from "./routes/notes";`, then `.route("/api/notes", notes)` on the chain. Writes that must succeed or fail together go in one `getDb(c.env).batch([...])`.
 
    These endpoints are open to anyone who has the app's address. To keep them to signed-in people, add sign-in first (next recipe) and guard the route.
 
@@ -162,7 +164,22 @@ The example is a `notes` table. Rename it to what the app stores.
    }
    ```
 
-   Update and delete follow the same shape with `api.api.notes[":id"].$patch({ param: { id }, json: { text } })` and `.$delete({ param: { id } })`. Show errors with `toast.error(error.message)` from `sonner`.
+   Update and delete follow the same shape. Delete answers 204 with no body, so do not read its JSON:
+
+   ```ts
+   export function useDeleteNote() {
+     const queryClient = useQueryClient();
+     return useMutation({
+       mutationFn: async (id: string) => {
+         const res = await api.api.notes[":id"].$delete({ param: { id } });
+         if (!res.ok) throw new Error("Could not delete the note");
+       },
+       onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+     });
+   }
+   ```
+
+   Update calls `api.api.notes[":id"].$patch({ param: { id }, json: { text } })` and can return `res.json()`. Show errors with `toast.error(error.message)` from `sonner`.
 
 5. **A test.** In `test/`, call the Worker with `app.request(url, init, db.env)` over the database from `setupDb()` (see `test/smoke.test.ts`): create, list, update and delete a note.
 
@@ -172,7 +189,7 @@ The example is a `notes` table. Rename it to what the app stores.
 
 1. **Install it:** `bun add better-auth@1.7.7`.
 
-2. **Its tables.** Add these to `worker/db/schema.ts`. Better Auth reads them by these names; do not rename the columns.
+2. **Its tables.** Add these to `worker/db/schema.ts`. Better Auth reads them by these names; do not rename the columns. When the schema already has tables, merge the imports with the ones at its top instead of repeating them.
 
    ```ts
    import { sql } from "drizzle-orm";
@@ -369,6 +386,8 @@ The example is a `notes` table. Rename it to what the app stores.
    export const Route = createFileRoute("/sign-in")({ component: () => <AuthForm mode="sign-in" /> });
    ```
 
+   The running dev server adds both to `src/routeTree.gen.ts`; without one, run `bun run build` before `bun run typecheck`, which otherwise rejects the new paths.
+
 7. **The header.** `src/components/user-menu.tsx`, placed beside `<ThemeToggle />` in `src/routes/__root.tsx` (wrap both in `<div className="flex items-center gap-2">`):
 
    ```tsx
@@ -418,7 +437,7 @@ The example is a `notes` table. Rename it to what the app stores.
 
 10. **Who can sign up.** Sign-up is open: anyone with the address can make an account. To close it, set `emailAndPassword: { enabled: true, disableSignUp: true }` and drop the sign-up page, or check the email in a `databaseHooks.user.create.before` hook. For password reset email, see `.kosuke/recipes/email.md`.
 
-11. **A test.** Sign up through `app.request("https://app.example/api/auth/sign-up/email", …)` with an `origin` header of the same address, and check the `set-cookie` header starts with `__Host-better-auth.session_token=` and has `Secure` and no `Domain`.
+11. **The tests.** In `test/setup-db.ts`, give the test Worker a secret: `const env = { TURSO_DATABASE_URL: server.url, BETTER_AUTH_SECRET: "test-secret-at-least-32-characters-long" } as Env;`. In `test/smoke.test.ts`, delete the cases that expect no sign-in routes (`/api/auth/...` answering 404): they describe the starter without sign-in. Then add a test: sign up through `app.request("https://app.example/api/auth/sign-up/email", …)` with an `origin` header of the same address, and check the `set-cookie` header starts with `__Host-better-auth.session_token=` and has `Secure`, `Path=/` and no `Domain`.
 
 ### Let a Cron write app data
 
@@ -427,7 +446,15 @@ The app's Crons write its tables with SQL, beside the people who use the app, an
 - Keep every default in SQL (the `default(sql…)` above), so `INSERT INTO notes (text) VALUES ('Hello')` fills `id` and the timestamps.
 - Change single columns rather than whole rows, so a Cron does not undo a person's edit to another column: `UPDATE notes SET text = ? WHERE id = ?`.
 - Drizzle's `$onUpdate` only runs for updates made through Drizzle. When a Cron's updates must move `updated_at` too, set it in the SQL: `SET updated_at = unixepoch() * 1000`.
-- For a free-form record, a JSON column (`text("data", { mode: "json" })`) lets a Cron change one key: `UPDATE notes SET data = json_set(data, '$.done', json('true')) WHERE id = ?`.
+- For a free-form record, a JSON column lets a Cron change one key without touching the others. Add it to the table, then `bun run db:generate` and `bun run db:migrate`:
+
+  ```ts
+  data: text("data", { mode: "json" }).$type<Record<string, unknown>>().notNull().default(sql`'{}'`),
+  ```
+
+  ```sql
+  UPDATE notes SET data = json_set(data, '$.done', json('true')) WHERE id = ?;
+  ```
 
 ### More
 
