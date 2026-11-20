@@ -30,4 +30,11 @@ describe("smoke", () => {
     expect((await call("/api/auth/get-session")).status).toBe(404);
     expect((await call("/api/records")).status).toBe(404);
   });
+
+  it.each(["/api/auth/sign-in/email", "/api/auth/sign-up/email", "/api/records"])(
+    "does not accept POST %s by default",
+    async (path) => {
+      expect((await call(path, { method: "POST" })).status).toBe(404);
+    },
+  );
 });
