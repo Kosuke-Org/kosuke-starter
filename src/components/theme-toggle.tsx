@@ -7,7 +7,7 @@ export function ThemeToggle() {
   const toggle = () =>
     setTheme(document.documentElement.classList.contains("dark") ? "light" : "dark");
   return (
-    <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle theme">
+    <Button variant="ghost" size="icon" className="max-sm:size-11" onClick={toggle} aria-label="Toggle theme">
       <SunIcon className="hidden dark:block" />
       <MoonIcon className="dark:hidden" />
     </Button>

@@ -2,9 +2,6 @@
 // and .dev.vars.example.
 export type Env = {
   ASSETS: Fetcher;
-  BETTER_AUTH_SECRET: string;
-  /** Optional. Defaults to the request's origin. */
-  BETTER_AUTH_URL?: string;
   /**
    * The app's Turso database, such as libsql://<db>-<org>.turso.io. A Worker
    * secret in production. In dev, vite.config.ts sets it, to a local server when
